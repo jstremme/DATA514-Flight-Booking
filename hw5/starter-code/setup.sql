@@ -40,6 +40,7 @@ CREATE TABLE ITINERARIES (
     iid int,
     fid_a int,
     fid_b int,
+    cost int,
     PRIMARY KEY (iid),
     FOREIGN KEY (fid_a) REFERENCES FLIGHTS(fid),
     FOREIGN KEY (fid_b) REFERENCES FLIGHTS(fid),
@@ -48,16 +49,28 @@ CREATE TABLE ITINERARIES (
 CREATE TABLE RESERVATIONS (
     rid int,
     iid int,
+    username varchar(30),
+    fid_a int,
+    fid_b int,
+    year int,
+    day_of_month int,
+    cost int,
     paid int,
     PRIMARY KEY (rid),
+    FOREIGN KEY (iid) REFERENCES ITINERARIES(iid),
+    FOREIGN KEY (username) REFERENCES USERS(username),
+    FOREIGN KEY (fid_a) REFERENCES FLIGHTS(fid),
+    FOREIGN KEY (fid_b) REFERENCES FLIGHTS(fid)
+);
+
+CREATE TABLE IIDTRACK (
+    iid int,
     FOREIGN KEY (iid) REFERENCES ITINERARIES(iid)
 );
 
-CREATE TABLE IDTRACK (
-    iid int,
-    username varchar(30),
-    FOREIGN KEY (iid) REFERENCES ITINERARIES(iid),
-    FOREIGN KEY (username) REFERENCES USERS(username)
+CREATE TABLE RIDTRACK (
+    rid int,
+    FOREIGN KEY (rid) REFERENCES RESERVATIONS(rid)
 );
 
 INSERT INTO FLIGHTS
@@ -67,16 +80,23 @@ INSERT INTO USERS
         VALUES('test', 'test', 0, 0);
 
 INSERT INTO ITINERARIES
-        VALUES(0, 999999999, 999999999);
+        VALUES(0, 999999999, 999999999, 0);
         
 INSERT INTO RESERVATIONS
-        VALUES(0, 0, 0);
+        VALUES(0, 0, 'test', 999999999, 999999999, 2005, 01, 0, 0);
 
-INSERT INTO IDTRACK
-        VALUES(0, 'test');
+INSERT INTO IIDTRACK
+        VALUES(0);
+
+INSERT INTO RIDTRACK
+        VALUES(0);
         
 SELECT * FROM ITINERARIES;
 
 SELECT * FROM USERS;
 
-SELECT * FROM IDTRACK;
+SELECT * FROM IIDTRACK;
+
+SELECT * FROM RIDTRACK;
+
+SELECT * FROM RESERVATIONS;

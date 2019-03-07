@@ -78,8 +78,7 @@
         // e.printStackTrace(); 
         // rollbackTransaction();
         return "Login failed\n";
-      } 
-            
+      }         
   }
 
 
@@ -115,6 +114,7 @@
    *
    * @see Flight#toString()
    */
+  
   public String transaction_search(String originCity, String destinationCity, boolean directFlight, int dayOfMonth,
                                    int numberOfItineraries)
   {
@@ -141,107 +141,164 @@
     try 
     {
       beginTransaction();
+
+      // CLEAR ALL ITINERARIES STORED IN DB?
+
+
+
+      String selectSQL = 
+            "SELECT TOP(1) iid FROM IIDTRACK "
+            + "ORDER BY iid DESC";
+      Statement selectStatement = conn.createStatement();
+      ResultSet r = selectStatement.executeQuery(selectSQL);
+      r.next();
+      int iid = r.getInt("iid") + 1;
+
       if (directFlight) 
       {
-        search_results.addAll(get_direct_flights(originCity, destinationCity, directFlight, dayOfMonth, numberOfItineraries));
+        search_results.addAll(get_direct_flights(iid, originCity, destinationCity, directFlight, dayOfMonth, numberOfItineraries));
       }
       else 
       {
-        search_results.addAll(get_direct_flights(originCity, destinationCity, directFlight, dayOfMonth, numberOfItineraries));
+        search_results.addAll(get_direct_flights(iid, originCity, destinationCity, directFlight, dayOfMonth, numberOfItineraries));
         int numDirects = search_results.size();
         int numIndirects = numberOfItineraries - numDirects;
-        System.out.println(numberOfItineraries);
-        System.out.println(numDirects);
-        System.out.println(numIndirects);
-        search_results.addAll(get_indirect_flights(originCity, destinationCity, directFlight, dayOfMonth, numIndirects));
+        search_results.addAll(get_indirect_flights(iid, originCity, destinationCity, directFlight, dayOfMonth, numIndirects));
       }
-      for (int i=0; i<search_results.size(); i++) {
+      for (int i=0; i<search_results.size(); i++)
+      {
         ArrayList<Integer> result = search_results.get(i);
-        String username = "test";
-        int iid = 99;
         int numFlights = result.get(0);
         int fid_a = result.get(1);
         int fid_b = result.get(2);
         int totalTime = result.get(3);
-        System.out.println("Itinerary " + iid + ": " + numFlights + " flight(s), " + totalTime + " minutes\n");
 
-        // ADD THE ITINERARIES TO THE ITINERARIES DB after the search is executed
-        // Include the user who ran the search
+        String itInsertSQL =
+            "INSERT INTO ITINERARIES "
+                + "VALUES(" + iid + "," + fid_a + "," + fid_b + ")";
+        Statement itInsertStatement = conn.createStatement();
+        itInsertStatement.executeUpdate(itInsertSQL);
+
+        String iidInsertSQL =
+            "INSERT INTO IIDTRACK "
+                + "VALUES(" + iid + ")";
+        Statement iidInsertStatement = conn.createStatement();
+        iidInsertStatement.executeUpdate(iidInsertSQL);
+
+        iid++;
       }
       commitTransaction();
-      return "End of list\n";
+      return "\n";
     }
     catch (SQLException e)
     {
       e.printStackTrace(); 
       return "Failed to search\n";
     }
-
   }
 
-  private ArrayList<ArrayList<Integer>> get_direct_flights(String originCity, String destinationCity, boolean directFlight,
+  private ArrayList<ArrayList<Integer>> get_direct_flights(int iid, String originCity, String destinationCity, boolean directFlight,
                                     int dayOfMonth, int numberOfItineraries) throws SQLException
   {
     ArrayList<ArrayList<Integer>> result = new ArrayList<ArrayList<Integer>>();    
     String directSearchSQL =
-      "SELECT TOP (" + numberOfItineraries + ") fid as fid_a,actual_time "
+      "SELECT TOP (" + numberOfItineraries + ") fid, year, day_of_month, carrier_id, flight_num, origin_city, dest_city, actual_time, capacity, price "
       + "FROM Flights "
       + "WHERE origin_city = \'" + originCity + "\' AND dest_city = \'" + destinationCity + "\' AND day_of_month =  " + dayOfMonth + " "
-      + "ORDER BY actual_time ASC, fid_a ASC";
+      + "ORDER BY actual_time ASC, fid ASC";
 
     Statement searchStatement = conn.createStatement();
     ResultSet oneHopResults = searchStatement.executeQuery(directSearchSQL);
 
     while (oneHopResults.next())
     {
-      int result_fid_a = oneHopResults.getInt("fid_a");
-      int result_time = oneHopResults.getInt("actual_time");
+      int fid = oneHopResults.getInt("fid");
+      int year = oneHopResults.getInt("year");
+      int day_of_month = oneHopResults.getInt("day_of_month");
+      String carrier_id = oneHopResults.getString("carrier_id");
+      int flight_num = oneHopResults.getInt("flight_num");
+      String origin_city = oneHopResults.getString("origin_city");
+      String dest_city = oneHopResults.getString("dest_city");
+      int actual_time = oneHopResults.getInt("actual_time");
+      int capacity = oneHopResults.getInt("capacity");
+      float price = oneHopResults.getFloat("price");
+
+      System.out.println("Itinerary " + iid + ": " + 1 + " flight(s), " + actual_time + " minutes");
+      System.out.println("ID: " + fid + " Date: " + year + "-7-" + day_of_month + " Carrier: " + carrier_id + " Number: " + flight_num + " Origin: " + origin_city + " Dest: " + dest_city + " Duration: " + actual_time + " Capacity: " + capacity + " Price: " + price);
+      
       ArrayList<Integer> temp = new ArrayList<Integer>();
       temp.add(1);
-      temp.add(result_fid_a);
+      temp.add(fid);
       temp.add(0);
-      temp.add(result_time);
+      temp.add(actual_time);
       result.add(temp);
+      iid++;
     }
     oneHopResults.close();
     return result;
   }
 
-  private ArrayList<ArrayList<Integer>> get_indirect_flights(String originCity, String destinationCity, boolean directFlight,
+  private ArrayList<ArrayList<Integer>> get_indirect_flights(int iid, String originCity, String destinationCity, boolean directFlight,
                                       int dayOfMonth, int numberOfItineraries) throws SQLException
   {
     ArrayList<ArrayList<Integer>> result = new ArrayList<ArrayList<Integer>>();  
     String indirectSearchSQL =
-      "SELECT DISTINCT TOP (" + numberOfItineraries + ") f1.fid as fid_a, f2.fid as fid_b, (f1.actual_time + f2.actual_time) as actual_time "
+      "SELECT DISTINCT TOP (" + numberOfItineraries + ") f1.fid as fid_a, f1.year as year_a, f1.day_of_month as day_of_month_a, f1.carrier_id as carrier_id_a, f1.flight_num as flight_num_a, f1.origin_city as origin_city_a, f1.dest_city as dest_city_a, f1.actual_time as actual_time_a, f1.capacity as capacity_a, f1.price as price_a, f2.fid as fid_b, f2.year as year_b, f2.day_of_month as day_of_month_b, f2.carrier_id as carrier_id_b, f2.flight_num as flight_num_b, f2.origin_city as origin_city_b, f2.dest_city as dest_city_b, f2.actual_time as actual_time_b, f2.capacity as capacity_b, f2.price as price_b, (f1.actual_time + f2.actual_time) as total_time "
       + "FROM Flights as f1, Flights as f2 "
-      + "WHERE f2.dest_city NOT IN "
-      + "(SELECT DISTINCT(f0.dest_city) FROM FLIGHTS as f0 WHERE f0.origin_city = \'" + originCity + "\') "
-      + "AND f1.origin_city = \'" + originCity + "\' "
+      + "WHERE f1.origin_city = \'" + originCity + "\' "
       + "AND f1.dest_city = f2.origin_city "
-      + "AND f2.dest_city != \'" + originCity + "\' "
-      + "AND f2.dest_city = \'" + destinationCity + "\' AND f2.day_of_month =  " + dayOfMonth + " "
-      + "ORDER BY actual_time ASC, fid_a ASC, fid_b ASC";
+      + "AND f2.dest_city = \'" + destinationCity + "\' "
+      + "AND f2.day_of_month =  " + dayOfMonth + " "
+      + "AND f1.actual_time IS NOT NULL "
+      + "AND f2.actual_time IS NOT NULL "
+      + "ORDER BY total_time ASC, fid_a ASC, fid_b ASC";
 
     Statement searchStatement = conn.createStatement();
     ResultSet indirectResults = searchStatement.executeQuery(indirectSearchSQL);
+
     while (indirectResults.next())
     {
-      int result_fid_a = indirectResults.getInt("fid_a");
-      int result_fid_b = indirectResults.getInt("fid_b");
-      int result_time = indirectResults.getInt("actual_time");
+      int fid_a = indirectResults.getInt("fid_a");
+      int year_a = indirectResults.getInt("year_a");
+      int day_of_month_a = indirectResults.getInt("day_of_month_a");
+      String carrier_id_a = indirectResults.getString("carrier_id_a");
+      int flight_num_a = indirectResults.getInt("flight_num_a");
+      String origin_city_a = indirectResults.getString("origin_city_a");
+      String dest_city_a = indirectResults.getString("dest_city_a");
+      int actual_time_a = indirectResults.getInt("actual_time_a");
+      int capacity_a = indirectResults.getInt("capacity_a");
+      float price_a = indirectResults.getFloat("price_a");
+
+      int fid_b = indirectResults.getInt("fid_b");
+      int year_b = indirectResults.getInt("year_b");
+      int day_of_month_b = indirectResults.getInt("day_of_month_b");
+      String carrier_id_b = indirectResults.getString("carrier_id_b");
+      int flight_num_b = indirectResults.getInt("flight_num_b");
+      String origin_city_b = indirectResults.getString("origin_city_b");
+      String dest_city_b = indirectResults.getString("dest_city_b");
+      int actual_time_b = indirectResults.getInt("actual_time_b");
+      int capacity_b = indirectResults.getInt("capacity_b");
+      float price_b = indirectResults.getFloat("price_b");
+
+      int total_time = indirectResults.getInt("total_time");
+
+      System.out.println("Itinerary " + iid + ": " + 2 + " flight(s), " + total_time + " minutes");
+      System.out.println("ID: " + fid_a + " Date: " + year_a + "-7-" + day_of_month_a + " Carrier: " + carrier_id_a + " Number: " + flight_num_a + " Origin: " + origin_city_a + " Dest: " + dest_city_a + " Duration: " + actual_time_a + " Capacity: " + capacity_a + " Price: " + price_a);
+      System.out.println("ID: " + fid_b + " Date: " + year_b + "-7-" + day_of_month_b + " Carrier: " + carrier_id_b + " Number: " + flight_num_b + " Origin: " + origin_city_b + " Dest: " + dest_city_b + " Duration: " + actual_time_b + " Capacity: " + capacity_b + " Price: " + price_b);
+
       ArrayList<Integer> temp = new ArrayList<Integer>();
       temp.add(2);
-      temp.add(result_fid_a);
-      temp.add(result_fid_b);
-      temp.add(result_time);
+      temp.add(fid_a);
+      temp.add(fid_b);
+      temp.add(total_time);
       result.add(temp);
+      iid++;
     }
     indirectResults.close();
     return result;
   }
 
-
-
+  
   /**
    * Implements the book itinerary function.
    *
