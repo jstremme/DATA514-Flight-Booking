@@ -24,6 +24,9 @@ public class Query
   // Logged In User
   private static String username; // customer username is unique
 
+  // Logged In Statust
+  private static int loggedin = 0; // customer username is unique
+
   // Canned queries
 
   private static final String CHECK_FLIGHT_CAPACITY = "SELECT capacity FROM Flights WHERE fid = ?";
@@ -143,41 +146,40 @@ public class Query
       {
         beginTransaction();
 
-        // CLEAR ALL ITINERARIES STORED IN DB?
-
+        if (loggedin == 1)
+        {
+          return "User already logged in\n";
+        }
 
         String selectSQL =
-            "Select loggedin FROM USERS "
-                + "WHERE username = \'" + username + "\'" + " AND password = \'" + password + "\'";
+            "Select password FROM USERS "
+              + "WHERE username = \'" + username + "\'";
         Statement selectStatement = conn.createStatement();
         ResultSet result = selectStatement.executeQuery(selectSQL);
         result.next();
-        int loggedin = result.getInt("loggedin");
-        if (loggedin == 0) 
+        String p = result.getString("password");
+        if (!(p.equals(password)))
         {
-          String updateSQL =
-          "Update USERS Set loggedin = 1 "
-                  + "WHERE username = \'" + username + "\'" + " AND password = \'" + password + "\'" + " AND loggedin = 0";
-          Statement updateStatement = conn.createStatement();
-          updateStatement.executeUpdate(updateSQL);
-          Query.username = username;
-          commitTransaction();
-          return "Logged in as " + username + "\n";
-        } 
-        else if (loggedin == 1) 
-        {
-          rollbackTransaction();
-          return "User already logged in\n";
-        }
-        else 
-        {
-          rollbackTransaction();
           return "Login failed\n";
         }
+        // String updateSQL =
+        // "Update USERS Set loggedin = 1 "
+        //         + "WHERE username = \'" + username + "\'" + " AND password = \'" + password + "\'" + " AND loggedin = 0";
+        // Statement updateStatement = conn.createStatement();
+        // updateStatement.executeUpdate(updateSQL);
+        Query.username = username;
+        Query.loggedin = 1;
+
+        String itDelSQL = "TRUNCATE TABLE ITINERARIES";
+        Statement itDelStatement = conn.createStatement();
+        itDelStatement.executeUpdate(itDelSQL);
+
+        commitTransaction();
+        return "Logged in as " + username + "\n";
       } 
       catch (SQLException e)
       { 
-        // e.printStackTrace(); 
+        e.printStackTrace(); 
         // rollbackTransaction();
         return "Login failed\n";
       }   
@@ -211,7 +213,7 @@ public class Query
 
         String insertSQL =
             "INSERT INTO USERS "
-                + "VALUES(\'" + username + "\',\'" + password + "\'," + initAmount + ", 0) ";
+                + "VALUES(\'" + username + "\',\'" + password + "\'," + initAmount + ") ";
    
         Statement insertStatement = conn.createStatement();
         insertStatement.executeUpdate(insertSQL);
@@ -221,6 +223,7 @@ public class Query
       catch (SQLException e) 
       { 
         // rollbackTransaction();
+        e.printStackTrace(); 
         return "Failed to create user\n";
       }
   }
@@ -282,24 +285,32 @@ public class Query
    */
   private String transaction_search_unsafe(String originCity, String destinationCity, boolean directFlight,
                                           int dayOfMonth, int numberOfItineraries)
-  { 
-    ArrayList<ArrayList<Integer>> search_results = new ArrayList<ArrayList<Integer>>();   
+  {    
     try 
     {
       beginTransaction();
 
-      // CLEAR ALL ITINERARIES STORED IN DB?
+      String itDelSQL = "TRUNCATE TABLE ITINERARIES";
+      Statement itDelStatement = conn.createStatement();
+      itDelStatement.executeUpdate(itDelSQL);
 
+      int numAdded = 0;
       if (directFlight) 
       {
-        add_direct_flights(originCity, destinationCity, directFlight, dayOfMonth, numberOfItineraries);
+        int n = add_direct_flights(originCity, destinationCity, directFlight, dayOfMonth, numberOfItineraries);
+        numAdded = numAdded + n;
       }
       else 
       {
-        add_direct_flights(originCity, destinationCity, directFlight, dayOfMonth, numberOfItineraries);
-        int numDirects = search_results.size();
-        int numIndirects = numberOfItineraries - numDirects;
-        add_indirect_flights(originCity, destinationCity, directFlight, dayOfMonth, numIndirects);
+        int n = add_direct_flights(originCity, destinationCity, directFlight, dayOfMonth, numberOfItineraries);
+        numAdded = numAdded + n;
+        int numIndirects = numberOfItineraries - numAdded;
+        int m = add_indirect_flights(originCity, destinationCity, directFlight, dayOfMonth, numIndirects);
+        numAdded = numAdded + m;
+      }
+      if (numAdded == 0)
+      {
+        return "No flights match your selection\n";
       }
       commitTransaction();
       return "\n";
@@ -311,13 +322,16 @@ public class Query
     }
   }
 
-  private String add_direct_flights(String originCity, String destinationCity, boolean directFlight,
+  private int add_direct_flights(String originCity, String destinationCity, boolean directFlight,
                                     int dayOfMonth, int numberOfItineraries) throws SQLException
   {
     String directSearchSQL =
       "SELECT TOP (" + numberOfItineraries + ") fid, year, day_of_month, carrier_id, flight_num, origin_city, dest_city, actual_time, capacity, price "
       + "FROM Flights "
-      + "WHERE origin_city = \'" + originCity + "\' AND dest_city = \'" + destinationCity + "\' AND day_of_month =  " + dayOfMonth + " "
+      + "WHERE origin_city = \'" + originCity + "\' "
+      + "AND dest_city = \'" + destinationCity + "\' "
+      + "AND day_of_month =  " + dayOfMonth + " "
+      + "AND canceled = 0 "
       + "ORDER BY actual_time ASC, fid ASC";
 
     Statement searchStatement = conn.createStatement();
@@ -328,9 +342,13 @@ public class Query
             + "ORDER BY iid DESC";
     Statement selectStatement = conn.createStatement();
     ResultSet r = selectStatement.executeQuery(selectSQL);
-    r.next();
-    int iid = r.getInt("iid") + 1;
+    int iid = 0;
+    if (r.next())
+    {
+      iid = r.getInt("iid") + 1;
+    }
 
+    int numFlights = 0;
     while (oneHopResults.next())
     {
       int fid = oneHopResults.getInt("fid");
@@ -359,12 +377,13 @@ public class Query
       Statement iidInsertStatement = conn.createStatement();
       iidInsertStatement.executeUpdate(iidInsertSQL);
       iid++;
+      numFlights++;
     }
     oneHopResults.close();
-    return "\n";
+    return numFlights;
   }
 
-  private String add_indirect_flights(String originCity, String destinationCity, boolean directFlight,
+  private int add_indirect_flights(String originCity, String destinationCity, boolean directFlight,
                                       int dayOfMonth, int numberOfItineraries) throws SQLException
   {
     String indirectSearchSQL =
@@ -373,9 +392,12 @@ public class Query
       + "WHERE f1.origin_city = \'" + originCity + "\' "
       + "AND f1.dest_city = f2.origin_city "
       + "AND f2.dest_city = \'" + destinationCity + "\' "
+      + "AND f1.day_of_month =  " + dayOfMonth + " "
       + "AND f2.day_of_month =  " + dayOfMonth + " "
       + "AND f1.actual_time IS NOT NULL "
       + "AND f2.actual_time IS NOT NULL "
+      + "AND f1.canceled = 0 "
+      + "AND f2.canceled = 0 "
       + "ORDER BY total_time ASC, fid_a ASC, fid_b ASC";
 
     Statement searchStatement = conn.createStatement();
@@ -386,9 +408,13 @@ public class Query
             + "ORDER BY iid DESC";
     Statement selectStatement = conn.createStatement();
     ResultSet r = selectStatement.executeQuery(selectSQL);
-    r.next();
-    int iid = r.getInt("iid") + 1;
+    int iid = 0;
+    if (r.next())
+    {
+      iid = r.getInt("iid") + 1;
+    }
 
+    int numFlights = 0;
     while (indirectResults.next())
     {
       int fid_a = indirectResults.getInt("fid_a");
@@ -422,7 +448,7 @@ public class Query
 
       String itInsertSQL =
           "INSERT INTO ITINERARIES "
-            + "VALUES(" + iid + "," + fid_a + "," + fid_b + total_price + ")";
+            + "VALUES(" + iid + "," + fid_a + "," + fid_b + "," + total_price + ")";
       Statement itInsertStatement = conn.createStatement();
       itInsertStatement.executeUpdate(itInsertSQL);
 
@@ -432,9 +458,10 @@ public class Query
       Statement iidInsertStatement = conn.createStatement();
       iidInsertStatement.executeUpdate(iidInsertSQL);
       iid++;
+      numFlights++;
     }
     indirectResults.close();
-    return "\n";
+    return numFlights;
   }
 
 
@@ -459,14 +486,13 @@ public class Query
       {
         beginTransaction();
 
-        String logSelectSQL = 
-            "SELECT loggedin FROM USERS "
-            + "WHERE username = \'" + username + "\'";
-        Statement logSelectStatement = conn.createStatement();
-        ResultSet logResult = logSelectStatement.executeQuery(logSelectSQL);
-        logResult.next();
-        int loggedIn = logResult.getInt("loggedin");
-        if (!(loggedIn == 1))
+        // String logSelectSQL = 
+        //     "SELECT loggedin FROM USERS "
+        //     + "WHERE username = \'" + username + "\'";
+        // Statement logSelectStatement = conn.createStatement();
+        // ResultSet logResult = logSelectStatement.executeQuery(logSelectSQL);
+        // int loggedIn = logResult.getInt("loggedin");
+        if (loggedin == 0)
         {
           return "Cannot book reservations, not logged in\n";
         }
@@ -504,11 +530,14 @@ public class Query
             + "ORDER BY rid DESC";
         Statement selectStatement = conn.createStatement();
         ResultSet r = selectStatement.executeQuery(selectSQL);
-        r.next();
-        int rid = r.getInt("rid") + 1;
+        int rid = 0;
+        if (r.next())
+        {
+          rid = r.getInt("rid") + 1;
+        }
 
         String iSelectSQL = 
-        "SELECT i.fid_a as fid_a, i.fid_b as fid_b, f.year as year, f.day_of_month as day_of_month FROM ITINERARIES as i, FLIGHTS as f "
+        "SELECT i.fid_a as fid_a, i.fid_b as fid_b, f.year as year, f.day_of_month as day_of_month, i.cost as cost FROM ITINERARIES as i, FLIGHTS as f "
             + "WHERE i.iid = " + itineraryId + " "
             + "AND i.fid_a = f.fid ";
         Statement iSelectStatement = conn.createStatement();
@@ -518,11 +547,12 @@ public class Query
         int fid_b = i.getInt("fid_b");
         int year = i.getInt("year");
         int day_of_month = i.getInt("day_of_month");
+        float cost = i.getFloat("cost");
         int paid = 0;
 
         String rInsertSQL =
             "INSERT INTO RESERVATIONS "
-                + "VALUES(" + rid + "," + itineraryId + "," + "\'" + username + "\'," + fid_a + "," + fid_b + "," + year + "," + day_of_month + "," + paid + ")";
+                + "VALUES(" + rid + "," + "\'" + username + "\'," + fid_a + "," + fid_b + "," + year + "," + day_of_month + "," + cost + "," + paid + ")";
         Statement rInsertStatement = conn.createStatement();
         rInsertStatement.executeUpdate(rInsertSQL);
 
@@ -532,10 +562,6 @@ public class Query
         Statement ridInsertStatement = conn.createStatement();
         ridInsertStatement.executeUpdate(ridInsertSQL);
 
-        // check if flight is full.. OR DO THIS ELSEWHERE
-        // generate reservation ID (get max ID from reservation ID table and increment by 1)
-        // add reservation with info from itinerary to DB
-        // remove itinerary from itinerary DB
         commitTransaction();
         return "Booked flight(s), reservation ID: " + rid + "\n";
 
@@ -571,7 +597,110 @@ public class Query
    */
   public String transaction_reservations()
   {
-    return "Failed to retrieve reservations\n";
+    try
+      {
+        beginTransaction();
+        if (loggedin == 0)
+        {
+          return "Cannot view reservations, not logged in\n";
+        }
+        String rSelectSQL = 
+            "SELECT 1 FROM RESERVATIONS "
+            + "WHERE username = \'" + username + "\'";
+        Statement rSelectStatement = conn.createStatement();
+        ResultSet rResult = rSelectStatement.executeQuery(rSelectSQL);
+        if (!(rResult.next()))
+        {
+          return "No reservations found\n";
+        }
+
+        String resSelectSQL = 
+            "SELECT rid, fid_b, paid FROM RESERVATIONS "
+            + "WHERE username = \'" + username + "\'";
+        Statement resSelectStatement = conn.createStatement();
+        ResultSet resResult = resSelectStatement.executeQuery(resSelectSQL);
+        ArrayList<Integer> rids = new ArrayList<Integer>();
+        ArrayList<Integer> fid_bs = new ArrayList<Integer>();
+        ArrayList<Integer> paids = new ArrayList<Integer>();
+        while (resResult.next())
+        {
+          int rid = resResult.getInt("rid");
+          int fid_bc = resResult.getInt("fid_b");
+          int paid = resResult.getInt("paid");
+          rids.add(rid);
+          fid_bs.add(fid_bc);
+          paids.add(paid);
+        }
+
+        for(int i =0; i<rids.size(); i++)
+        {
+          int rid = rids.get(i);
+          int fid_b_check = fid_bs.get(i);
+          int paid = paids.get(i);
+          int numFlights = 0;
+          if (fid_b_check == 0) {
+            numFlights = 1;
+          }
+          else {
+            numFlights = 2;
+          }
+
+          String raSelectSQL = 
+          "SELECT r.fid_a as fid_a, f.year as year_a, f.day_of_month as day_of_month_a, f.carrier_id as carrier_id_a, f.flight_num as flight_num_a, f.origin_city as origin_city_a, f.dest_city as dest_city_a, f.actual_time as actual_time_a, f.capacity as capacity_a, f.price as price_a FROM FLIGHTS as f, RESERVATIONS as r "
+              + "WHERE r.username = \'" + username + "\'"
+              + "AND r.rid = " + rid + " "
+              + "AND r.fid_a = f.fid";
+          Statement raSelectStatement = conn.createStatement();
+          ResultSet ra = resSelectStatement.executeQuery(raSelectSQL);
+          ra.next();
+
+          int fid_a = ra.getInt("fid_a");
+          int year_a = ra.getInt("year_a");
+          int day_of_month_a = ra.getInt("day_of_month_a");
+          String carrier_id_a = ra.getString("carrier_id_a");
+          int flight_num_a = ra.getInt("flight_num_a");
+          String origin_city_a = ra.getString("origin_city_a");
+          String dest_city_a = ra.getString("dest_city_a");
+          float actual_time_a = ra.getFloat("actual_time_a");
+          int capacity_a = ra.getInt("capacity_a");
+          float price_a = ra.getFloat("price_a");
+
+          System.out.println("Reservation " + rid + " paid: " + paid);
+          System.out.println("ID: " + fid_a + " Date: " + year_a + "-7-" + day_of_month_a + " Carrier: " + carrier_id_a + " Number: " + flight_num_a + " Origin: " + origin_city_a + " Dest: " + dest_city_a + " Duration: " + actual_time_a + " Capacity: " + capacity_a + " Price: " + price_a);
+
+          if (numFlights == 2) 
+          {
+            String rbSelectSQL = 
+            "SELECT r.fid_b as fid_b, f.year as year_b, f.day_of_month as day_of_month_b, f.carrier_id as carrier_id_b, f.flight_num as flight_num_b, f.origin_city as origin_city_b, f.dest_city as dest_city_b, f.actual_time as actual_time_b, f.capacity as capacity_b, f.price as price_b FROM FLIGHTS as f, RESERVATIONS as r "
+                + "WHERE r.username = \'" + username + "\'"
+                + "AND r.rid = " + rid + " "
+                + "AND r.fid_b = f.fid";
+            Statement rbSelectStatement = conn.createStatement();
+            ResultSet rb = resSelectStatement.executeQuery(rbSelectSQL);
+            rb.next();
+
+            int fid_b = rb.getInt("fid_b");
+            int year_b = rb.getInt("year_b");
+            int day_of_month_b = rb.getInt("day_of_month_b");
+            String carrier_id_b = rb.getString("carrier_id_b");
+            int flight_num_b = rb.getInt("flight_num_b");
+            String origin_city_b =rb.getString("origin_city_b");
+            String dest_city_b = rb.getString("dest_city_b");
+            float actual_time_b = rb.getFloat("actual_time_b");
+            int capacity_b = rb.getInt("capacity_b");
+            float price_b = rb.getFloat("price_b");
+          
+            System.out.println("ID: " + fid_b + " Date: " + year_b + "-7-" + day_of_month_b + " Carrier: " + carrier_id_b + " Number: " + flight_num_b + " Origin: " + origin_city_b + " Dest: " + dest_city_b + " Duration: " + actual_time_b + " Capacity: " + capacity_b + " Price: " + price_b);
+          }
+        }
+        commitTransaction();
+      } 
+      catch (SQLException e) 
+      { 
+        e.printStackTrace();
+        return "Failed to retrieve reservations\n";
+      }
+    return "";
   }
 
   /**
@@ -611,24 +740,70 @@ public class Query
     try
       {
         beginTransaction();
-        // if user loggedin = 0
-          return "Cannot pay, not logged in\n"
-        // if reservationId not found in reservations table
-          return "Cannot find unpaid reservation [reservationId] under user: [username]\n"
-        // get price of reservation (may need to make some joins) as cost
-        // get user balance
-        // remaining = user_balance - cost
-        // if remaining < 0 
-          return "User has only [balance] in account but itinerary costs [cost]\n"
-        // set reservation as paid
-        // set user balance to remaining
-        commitTransaction();
-        balance = remaining
-        return "Paid reservation: [reservationId] remaining balance: [balance]\n"
+        // String logSelectSQL = 
+        //     "SELECT loggedin FROM USERS "
+        //     + "WHERE username = \'" + username + "\'";
+        // Statement logSelectStatement = conn.createStatement();
+        // ResultSet logResult = logSelectStatement.executeQuery(logSelectSQL);
+        if (loggedin == 0)
+        {
+          return "Cannot pay, not logged in\n";
+        }
+        String rSelectSQL = 
+            "SELECT rid FROM RESERVATIONS "
+            + "WHERE rid = " + reservationId + " ";
+        Statement rSelectStatement = conn.createStatement();
+        ResultSet rResult = rSelectStatement.executeQuery(rSelectSQL);
+        if (!(rResult.next()))
+        {
+          return "Cannot find unpaid reservation " + reservationId + " under user: \'" + username + "\'\n";
+        }
+
+        String uSelectSQL = 
+            "SELECT balance FROM USERS "
+            + "WHERE username = \'" + username + "\'";
+        Statement uSelectStatement = conn.createStatement();
+        ResultSet uResult = uSelectStatement.executeQuery(uSelectSQL);
+        uResult.next();
+        float balance = uResult.getFloat("balance");
+
+        String resSelectSQL = 
+            "SELECT cost FROM RESERVATIONS "
+            + "WHERE rid = " + reservationId + " ";
+        Statement resSelectStatement = conn.createStatement();
+        ResultSet resResult = resSelectStatement.executeQuery(resSelectSQL);
+        resResult.next();
+        float cost = resResult.getFloat("cost");
+
+        float remaining = balance - cost;
+        if (remaining < 0)
+        {
+          return "User has only " + balance + " in account but itinerary costs " + cost + "\n";
+        }
+        else {
+          String resUpdateSQL =
+          "Update RESERVATIONS Set paid = 1 "
+                  + "WHERE rid = " + reservationId + " ";
+          Statement resUpdateStatement = conn.createStatement();
+          resUpdateStatement.executeUpdate(resUpdateSQL);
+
+          String userUpdateSQL =
+          "Update USERS Set balance = " + remaining + " "
+                  + "WHERE username = \'" + username + "\'";
+          Statement userUpdateStatement = conn.createStatement();
+          userUpdateStatement.executeUpdate(userUpdateSQL);
+
+          String itDelSQL = "TRUNCATE TABLE ITINERARIES";
+          Statement itDelStatement = conn.createStatement();
+          itDelStatement.executeUpdate(itDelSQL);
+
+          commitTransaction();
+          return "Paid reservation: " + reservationId + " remaining balance: " + remaining + "\n";
+        }
       }
       catch (SQLException e) 
       { 
-        rollbackTransaction();
+        e.printStackTrace(); 
         return "Failed to pay for reservation " + reservationId + "\n";
       }
   }
