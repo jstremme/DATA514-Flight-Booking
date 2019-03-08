@@ -174,6 +174,10 @@ public class Query
         Statement itDelStatement = conn.createStatement();
         itDelStatement.executeUpdate(itDelSQL);
 
+        String iidDelSQL = "TRUNCATE TABLE IIDTRACK";
+        Statement iidDelStatement = conn.createStatement();
+        iidDelStatement.executeUpdate(iidDelSQL);
+
         commitTransaction();
         return "Logged in as " + username + "\n";
       } 
@@ -267,7 +271,8 @@ public class Query
   public String transaction_search(String originCity, String destinationCity, boolean directFlight, int dayOfMonth,
                                    int numberOfItineraries)
   {
-    return transaction_search_unsafe(originCity, destinationCity, directFlight, dayOfMonth, numberOfItineraries);
+    // return transaction_search_unsafe(originCity, destinationCity, directFlight, dayOfMonth, numberOfItineraries);
+    return transaction_search_safe(originCity, destinationCity, directFlight, dayOfMonth, numberOfItineraries);
   }
 
   /**
@@ -283,7 +288,7 @@ public class Query
    * @return The search results. Note that this implementation *does not conform* to the format required by
    * {@code transaction_search}.
    */
-  private String transaction_search_unsafe(String originCity, String destinationCity, boolean directFlight,
+  private String transaction_search_safe(String originCity, String destinationCity, boolean directFlight,
                                           int dayOfMonth, int numberOfItineraries)
   {    
     try 
@@ -293,6 +298,10 @@ public class Query
       String itDelSQL = "TRUNCATE TABLE ITINERARIES";
       Statement itDelStatement = conn.createStatement();
       itDelStatement.executeUpdate(itDelSQL);
+
+      String iidDelSQL = "TRUNCATE TABLE IIDTRACK";
+      Statement iidDelStatement = conn.createStatement();
+      iidDelStatement.executeUpdate(iidDelSQL);
 
       int numAdded = 0;
       if (directFlight) 
@@ -334,8 +343,8 @@ public class Query
       + "AND canceled = 0 "
       + "ORDER BY actual_time ASC, fid ASC";
 
-    Statement searchStatement = conn.createStatement();
-    ResultSet oneHopResults = searchStatement.executeQuery(directSearchSQL);
+    PreparedStatement dirPreparedStatement = conn.prepareStatement(directSearchSQL);
+    ResultSet oneHopResults = dirPreparedStatement.executeQuery();
 
     String selectSQL = 
         "SELECT TOP(1) iid FROM IIDTRACK "
@@ -400,8 +409,8 @@ public class Query
       + "AND f2.canceled = 0 "
       + "ORDER BY total_time ASC, fid_a ASC, fid_b ASC";
 
-    Statement searchStatement = conn.createStatement();
-    ResultSet indirectResults = searchStatement.executeQuery(indirectSearchSQL);
+    PreparedStatement inPreparedStatement = conn.prepareStatement(indirectSearchSQL);
+    ResultSet indirectResults = inPreparedStatement.executeQuery();
 
     String selectSQL = 
         "SELECT TOP(1) iid FROM IIDTRACK "
@@ -519,8 +528,10 @@ public class Query
             + "AND f.year = r.year "
             + "AND f.day_of_month = r.day_of_month "
             + "AND r.username = \'" + username + "\'";
-        Statement rSelectStatement = conn.createStatement();
-        ResultSet rResult = rSelectStatement.executeQuery(rSelectSQL);
+
+        PreparedStatement rPreparedStatement = conn.prepareStatement(rSelectSQL);
+        ResultSet rResult = rPreparedStatement.executeQuery();
+
         if (rResult.next()) {
           return "You cannot book two flights in the same day\n";
         }
@@ -540,8 +551,9 @@ public class Query
         "SELECT i.fid_a as fid_a, i.fid_b as fid_b, f.year as year, f.day_of_month as day_of_month, i.cost as cost FROM ITINERARIES as i, FLIGHTS as f "
             + "WHERE i.iid = " + itineraryId + " "
             + "AND i.fid_a = f.fid ";
-        Statement iSelectStatement = conn.createStatement();
-        ResultSet i = iSelectStatement.executeQuery(iSelectSQL);
+
+        PreparedStatement iPreparedStatement = conn.prepareStatement(iSelectSQL);
+        ResultSet i = iPreparedStatement.executeQuery();
         i.next();
         int fid_a = i.getInt("fid_a");
         int fid_b = i.getInt("fid_b");
@@ -607,8 +619,8 @@ public class Query
         String rSelectSQL = 
             "SELECT 1 FROM RESERVATIONS "
             + "WHERE username = \'" + username + "\'";
-        Statement rSelectStatement = conn.createStatement();
-        ResultSet rResult = rSelectStatement.executeQuery(rSelectSQL);
+        PreparedStatement rPreparedStatement = conn.prepareStatement(rSelectSQL);
+        ResultSet rResult = rPreparedStatement.executeQuery();
         if (!(rResult.next()))
         {
           return "No reservations found\n";
@@ -617,8 +629,8 @@ public class Query
         String resSelectSQL = 
             "SELECT rid, fid_b, paid FROM RESERVATIONS "
             + "WHERE username = \'" + username + "\'";
-        Statement resSelectStatement = conn.createStatement();
-        ResultSet resResult = resSelectStatement.executeQuery(resSelectSQL);
+        PreparedStatement resPreparedStatement = conn.prepareStatement(resSelectSQL);
+        ResultSet resResult = resPreparedStatement.executeQuery();
         ArrayList<Integer> rids = new ArrayList<Integer>();
         ArrayList<Integer> fid_bs = new ArrayList<Integer>();
         ArrayList<Integer> paids = new ArrayList<Integer>();
@@ -650,8 +662,8 @@ public class Query
               + "WHERE r.username = \'" + username + "\'"
               + "AND r.rid = " + rid + " "
               + "AND r.fid_a = f.fid";
-          Statement raSelectStatement = conn.createStatement();
-          ResultSet ra = resSelectStatement.executeQuery(raSelectSQL);
+          PreparedStatement raPreparedStatement = conn.prepareStatement(raSelectSQL);
+          ResultSet ra = raPreparedStatement.executeQuery();
           ra.next();
 
           int fid_a = ra.getInt("fid_a");
@@ -675,8 +687,8 @@ public class Query
                 + "WHERE r.username = \'" + username + "\'"
                 + "AND r.rid = " + rid + " "
                 + "AND r.fid_b = f.fid";
-            Statement rbSelectStatement = conn.createStatement();
-            ResultSet rb = resSelectStatement.executeQuery(rbSelectSQL);
+            PreparedStatement rbPreparedStatement = conn.prepareStatement(rbSelectSQL);
+            ResultSet rb = rbPreparedStatement.executeQuery();
             rb.next();
 
             int fid_b = rb.getInt("fid_b");
@@ -716,8 +728,25 @@ public class Query
    * Even though a reservation has been canceled, its ID should not be reused by the system.
    */
   public String transaction_cancel(int reservationId)
-  {
-    return "Failed to cancel reservation " + reservationId;
+  { 
+    try 
+    {
+        beginTransaction();
+        if (loggedin == 0)
+        {
+          return "Cannot cancel reservations, not logged in\n";
+        }
+        String delSQL = "DELETE FROM RESERVATIONS "
+                  + "WHERE rid = " + reservationId + " ";
+        Statement delStatement = conn.createStatement();
+        delStatement.executeUpdate(delSQL);
+        commitTransaction();
+        return "Canceled reservation " + reservationId;
+    }
+    catch (SQLException e) 
+    { 
+      return "Failed to cancel reservation " + reservationId;
+    }
   }
 
   /**
@@ -752,8 +781,8 @@ public class Query
         String rSelectSQL = 
             "SELECT rid FROM RESERVATIONS "
             + "WHERE rid = " + reservationId + " ";
-        Statement rSelectStatement = conn.createStatement();
-        ResultSet rResult = rSelectStatement.executeQuery(rSelectSQL);
+        PreparedStatement rPreparedStatement = conn.prepareStatement(rSelectSQL);
+        ResultSet rResult = rPreparedStatement.executeQuery();
         if (!(rResult.next()))
         {
           return "Cannot find unpaid reservation " + reservationId + " under user: \'" + username + "\'\n";
@@ -762,16 +791,16 @@ public class Query
         String uSelectSQL = 
             "SELECT balance FROM USERS "
             + "WHERE username = \'" + username + "\'";
-        Statement uSelectStatement = conn.createStatement();
-        ResultSet uResult = uSelectStatement.executeQuery(uSelectSQL);
+        PreparedStatement uPreparedStatement = conn.prepareStatement(uSelectSQL);
+        ResultSet uResult = uPreparedStatement.executeQuery();
         uResult.next();
         float balance = uResult.getFloat("balance");
 
         String resSelectSQL = 
             "SELECT cost FROM RESERVATIONS "
             + "WHERE rid = " + reservationId + " ";
-        Statement resSelectStatement = conn.createStatement();
-        ResultSet resResult = resSelectStatement.executeQuery(resSelectSQL);
+        PreparedStatement resPreparedStatement = conn.prepareStatement(resSelectSQL);
+        ResultSet resResult = resPreparedStatement.executeQuery();
         resResult.next();
         float cost = resResult.getFloat("cost");
 
@@ -796,6 +825,10 @@ public class Query
           String itDelSQL = "TRUNCATE TABLE ITINERARIES";
           Statement itDelStatement = conn.createStatement();
           itDelStatement.executeUpdate(itDelSQL);
+
+          String iidDelSQL = "TRUNCATE TABLE IIDTRACK";
+          Statement iidDelStatement = conn.createStatement();
+          iidDelStatement.executeUpdate(iidDelSQL);
 
           commitTransaction();
           return "Paid reservation: " + reservationId + " remaining balance: " + remaining + "\n";
