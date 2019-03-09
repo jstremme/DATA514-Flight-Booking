@@ -1,0 +1,13 @@
+# u1
+#
+create u1 u1 500
+create u1 pw 600
+quit
+*
+#
+# expected printouts
+#
+Created user u1
+Failed to create user
+Goodbye
+*

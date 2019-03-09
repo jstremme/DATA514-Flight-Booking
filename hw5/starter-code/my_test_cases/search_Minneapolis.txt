@@ -1,0 +1,15 @@
+# u3
+create u3 u3 100000
+login u3 u3
+search "Seattle WA" "Minneapolis MN" 1 2 1
+quit
+*
+#
+# expected printouts for u3
+#
+Created user u3
+Logged in as u3
+Itinerary 0: 1 flight(s), 173.0 minutes
+ID: 752619 Date: 2015-7-2 Carrier: DL Number: 2547 Origin: Seattle WA Dest: Minneapolis MN Duration: 173.0 Capacity: 16 Price: 180.98
+Goodbye
+*

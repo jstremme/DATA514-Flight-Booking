@@ -1,0 +1,13 @@
+# u2
+#
+create u2 u2 600
+login u2 wrong
+quit
+*
+#
+# expected printouts for u2
+#
+Created user u2
+Login failed
+Goodbye
+*

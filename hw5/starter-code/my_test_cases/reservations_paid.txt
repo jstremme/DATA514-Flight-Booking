@@ -1,0 +1,22 @@
+# u6
+create u6 u6 1000
+login u6 u6
+search "Seattle WA" "Boston MA" 1 10 1
+book 0
+pay 1
+reservations
+quit
+*
+#
+# expected printouts for u6
+#
+Created user u6
+Logged in as u6
+Itinerary 0: 1 flight(s), 309.0 minutes
+ID: 708454 Date: 2015-7-10 Carrier: AS Number: 734 Origin: Seattle WA Dest: Boston MA Duration: 309.0 Capacity: 5 Price: 677.59
+Booked flight(s), reservation ID: 1
+Paid reservation: 1 remaining balance: 322.41
+Reservation 1 paid: true:
+ID: 708454 Date: 2015-7-10 Carrier: AS Number: 734 Origin: Seattle WA Dest: Boston MA Duration: 309.0 Capacity: 5 Price: 677.59
+Goodbye
+*

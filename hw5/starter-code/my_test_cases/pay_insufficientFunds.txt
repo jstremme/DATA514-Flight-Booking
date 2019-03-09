@@ -1,15 +1,19 @@
-# user 1
-create user1 user1 100000
-login user1 user1
+# u5
+create u5 u5 100
+login u5 u5
 search "Seattle WA" "Boston MA" 1 1 1
+book 0
+pay 1
 quit
 *
 #
-# expected printouts for user 1
+# expected printouts for u5
 #
-Created user user1
-Logged in as user1
+Created user u5
+Logged in as u5
 Itinerary 0: 1 flight(s), 297.0 minutes
 ID: 60454 Date: 2005-7-1 Carrier: AS Number: 24 Origin: Seattle WA Dest: Boston MA Duration: 297.0 Capacity: 14 Price: 140.59
+Booked flight(s), reservation ID: 1
+User has only 100.00 in account but itinerary costs 140.59
 Goodbye
 *
