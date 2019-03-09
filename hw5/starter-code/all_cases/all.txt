@@ -1,0 +1,118 @@
+# u4
+create u4 u4 40000
+search "Seattle WA" "Minneapolis MN" 1 2 1
+book 0
+quit
+*
+#
+# expected printouts for u4
+#
+Created user u4
+Itinerary 0: 1 flight(s), 173.0 minutes
+ID: 752619 Date: 2015-7-2 Carrier: DL Number: 2547 Origin: Seattle WA Dest: Minneapolis MN Duration: 173.0 Capacity: 16 Price: 180.98
+Cannot book reservations, not logged in
+Goodbye
+*
+# u7
+create u7 u7 1000
+login u7 u7
+search "Seattle WA" "Boston MA" 1 10 1
+book 0
+pay 1
+reservations
+quit
+*
+#
+# expected printouts for u7
+Created user u7
+Logged in as u7
+Itinerary 0: 1 flight(s), 309.0 minutes
+ID: 708454 Date: 2015-7-10 Carrier: AS Number: 734 Origin: Seattle WA Dest: Boston MA Duration: 309.0 Capacity: 5 Price: 677.59
+Booked flight(s), reservation ID: 1
+Paid reservation: 1 remaining balance: 322.41
+Reservation 1 paid: true:
+ID: 708454 Date: 2015-7-10 Carrier: AS Number: 734 Origin: Seattle WA Dest: Boston MA Duration: 309.0 Capacity: 5 Price: 677.59
+Goodbye
+*
+# u1
+#
+create u1 u1 500
+create u1 pw 600
+quit
+*
+#
+# expected printouts
+#
+Created user u1
+Failed to create user
+Goodbye
+*
+# u2
+#
+create u2 u2 600
+login u2 wrong
+quit
+*
+#
+# expected printouts for u2
+#
+Created user u2
+Login failed
+Goodbye
+*
+# u5
+create u5 u5 100
+login u5 u5
+search "Seattle WA" "Boston MA" 1 1 1
+book 0
+pay 1
+quit
+*
+#
+# expected printouts for u5
+#
+Created user u5
+Logged in as u5
+Itinerary 0: 1 flight(s), 297.0 minutes
+ID: 60454 Date: 2005-7-1 Carrier: AS Number: 24 Origin: Seattle WA Dest: Boston MA Duration: 297.0 Capacity: 14 Price: 140.59
+Booked flight(s), reservation ID: 1
+User has only 100.00 in account but itinerary costs 140.59
+Goodbye
+*
+# u6
+create u6 u6 1000
+login u6 u6
+search "Seattle WA" "Boston MA" 1 10 1
+book 0
+pay 1
+reservations
+quit
+*
+#
+# expected printouts for u6
+#
+Created user u6
+Logged in as u6
+Itinerary 0: 1 flight(s), 309.0 minutes
+ID: 708454 Date: 2015-7-10 Carrier: AS Number: 734 Origin: Seattle WA Dest: Boston MA Duration: 309.0 Capacity: 5 Price: 677.59
+Booked flight(s), reservation ID: 1
+Paid reservation: 1 remaining balance: 322.41
+Reservation 1 paid: true:
+ID: 708454 Date: 2015-7-10 Carrier: AS Number: 734 Origin: Seattle WA Dest: Boston MA Duration: 309.0 Capacity: 5 Price: 677.59
+Goodbye
+*
+# u3
+create u3 u3 100000
+login u3 u3
+search "Seattle WA" "Minneapolis MN" 1 2 1
+quit
+*
+#
+# expected printouts for u3
+#
+Created user u3
+Logged in as u3
+Itinerary 0: 1 flight(s), 173.0 minutes
+ID: 752619 Date: 2015-7-2 Carrier: DL Number: 2547 Origin: Seattle WA Dest: Minneapolis MN Duration: 173.0 Capacity: 16 Price: 180.98
+Goodbye
+*
